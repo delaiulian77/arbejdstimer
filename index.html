@@ -49,6 +49,11 @@
     .report-box { background: #f0fdf4; border: 1px solid #bbf7d0; padding: 12px; border-radius: 8px; margin-top: 12px; white-space: pre-wrap; font-family: monospace; line-height: 1.5; }
     .divider { height: 1px; background: #e2e8f0; margin: 12px 0; }
     .help { font-size: 0.8rem; color: var(--muted); margin-bottom: 8px; }
+    .break-row { display: flex; align-items: center; gap: 8px; }
+    .break-row label.chk { display: flex; align-items: center; gap: 8px; margin: 0; flex: 1; color: var(--text); font-size: 1rem; }
+    .break-row label.chk input { width: 22px; height: 22px; flex: none; }
+    .break-row input[type=number] { width: 80px; }
+    .break-row input[type=number]:disabled { background: #f1f5f9; color: var(--muted); }
     /* Rotita de setari: mica, discreta, in coltul din stanga-jos */
     .settings-btn { position: fixed; left: max(12px, env(safe-area-inset-left)); bottom: max(12px, env(safe-area-inset-bottom));
                     width: 34px; height: 34px; padding: 0; border-radius: 50%; background: transparent; color: var(--muted);
@@ -92,6 +97,14 @@
         <div style="flex:1"><label data-i18n="checkIn"></label><input type="time" id="checkIn"></div>
         <div style="flex:1"><label data-i18n="checkOut"></label><input type="time" id="checkOut"></div>
       </div>
+      <div class="form-group">
+        <div class="break-row">
+          <label class="chk"><input type="checkbox" id="breakOn" onchange="syncBreak()"><span data-i18n="unpaidBreak"></span></label>
+          <input type="number" id="breakMin" value="30" min="0" inputmode="numeric" aria-label="min">
+          <span data-i18n="minUnit"></span>
+        </div>
+        <div class="help" style="margin:4px 0 0;" data-i18n="breakHelp"></div>
+      </div>
       <div class="form-group"><label data-i18n="extraMin"></label><input type="number" id="extraMin" value="0" min="0"></div>
       <div class="form-group"><label data-i18n="meetingMin"></label><input type="number" id="meetingMin" value="0" min="0"></div>
       <div class="divider"></div>
@@ -107,12 +120,22 @@
   <!-- Rapport -->
   <div class="modal" id="reportModal">
     <div class="modal-content">
-      <h3 data-i18n="monthlyReport"></h3>
+      <h3 data-i18n="report"></h3>
       <div class="form-group" style="margin-top:12px;">
-        <label data-i18n="month"></label><select id="reportMonth"></select>
+        <label data-i18n="reportType"></label>
+        <select id="reportType" onchange="onReportTypeChange()">
+          <option value="month" data-i18n="monthly"></option>
+          <option value="week" data-i18n="weekly"></option>
+        </select>
+      </div>
+      <div class="form-group" id="repMonthGroup">
+        <label data-i18n="month"></label><select id="reportMonth" onchange="generateReport()"></select>
+      </div>
+      <div class="form-group" id="repWeekGroup" style="display:none;">
+        <label data-i18n="week"></label><select id="reportWeek" onchange="generateReport()"></select>
       </div>
       <div class="form-group">
-        <label data-i18n="year"></label><select id="reportYear"></select>
+        <label data-i18n="year"></label><select id="reportYear" onchange="onReportYearChange()"></select>
       </div>
       <button onclick="generateReport()" style="width:100%; margin-top:8px;" data-i18n="generate"></button>
       <div class="report-box" id="reportOutput"></div>
@@ -185,6 +208,8 @@ const STRINGS = {
     msgImported: n => `${n} ${n === 1 ? 'dag' : 'dage'} importeret.`,
     confirmImport: (n, now) => `Importér ${n} ${n === 1 ? 'dag' : 'dage'}? Det erstatter de ${now} dage, der er gemt på denne enhed.`,
     hUnit: 't',
+    unpaidBreak: 'Ubetalt pause', minUnit: 'min', breakHelp: 'Trækkes fra dagens arbejdstid (ind–ud).',
+    reportType: 'Rapporttype', monthly: 'Månedlig', weekly: 'Ugentlig', week: 'Uge',
     workLine: d => `${d} på arbejde`, meetLine: d => `${d} møder`,
     sygLine: n => `${n} syg ${n === 1 ? 'dag' : 'dage'}`,
     sygBarnLine: n => `${n} syg barn ${n === 1 ? 'dag' : 'dage'}`,
@@ -210,6 +235,8 @@ const STRINGS = {
     msgImported: n => `Imported ${n} ${n === 1 ? 'day' : 'days'}.`,
     confirmImport: (n, now) => `Import ${n} ${n === 1 ? 'day' : 'days'}? This replaces the ${now} days saved on this device.`,
     hUnit: 'h',
+    unpaidBreak: 'Unpaid break', minUnit: 'min', breakHelp: 'Deducted from the day\'s work time (in–out).',
+    reportType: 'Report type', monthly: 'Monthly', weekly: 'Weekly', week: 'Week',
     workLine: d => `${d} at work`, meetLine: d => `${d} meetings`,
     sygLine: n => `${n} sick ${n === 1 ? 'day' : 'days'}`,
     sygBarnLine: n => `${n} sick child ${n === 1 ? 'day' : 'days'}`,
@@ -235,6 +262,8 @@ const STRINGS = {
     msgImported: n => `Import reușit: ${n} ${roDays(n)}.`,
     confirmImport: (n, now) => `Imporți ${n} ${roDays(n)}? Aceasta înlocuiește datele salvate pe acest dispozitiv (${now} ${roDays(now)}).`,
     hUnit: 'h',
+    unpaidBreak: 'Pauză neplătită', minUnit: 'min', breakHelp: 'Se scade din timpul de lucru al zilei (intrare–ieșire).',
+    reportType: 'Tip raport', monthly: 'Lunar', weekly: 'Săptămânal', week: 'Săptămâna',
     workLine: d => `${d} la muncă`, meetLine: d => `${d} întâlniri`,
     sygLine: n => `${n} ${roDays(n)} de boală`,
     sygBarnLine: n => `${n} ${roDays(n)} de boală copil`,
@@ -290,8 +319,9 @@ function applyLanguage() {
   fillStatusSelect();
   renderCalendar();
   if (document.getElementById('reportModal').classList.contains('active')) {
-    fillReportSelects(parseInt(document.getElementById('reportMonth').value, 10) || currentMonth + 1,
-                      parseInt(document.getElementById('reportYear').value, 10) || currentYear);
+    const ry = parseInt(document.getElementById('reportYear').value, 10) || currentYear;
+    fillReportSelects(parseInt(document.getElementById('reportMonth').value, 10) || currentMonth + 1, ry);
+    fillWeekSelect(ry, parseInt(document.getElementById('reportWeek').value, 10) || 1);
     generateReport();
   }
   document.getElementById('backupMsg').textContent = '';
@@ -329,18 +359,22 @@ function getHolidays(year) {
   ].map(d => `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`));
 }
 
-function formatWorkHours(rec) {
+// Netto-minutter mellem ind og ud, minus ubetalt pause hvis den er sat. null = ingen tider.
+function netWorkMin(rec) {
   if (!rec || !rec.checkIn || !rec.checkOut) return null;
-  const parts = rec.checkIn.split(':');
-  if (parts.length !== 2) return null;
-  const h1 = parseInt(parts[0], 10), m1 = parseInt(parts[1], 10);
-  const p2 = rec.checkOut.split(':');
-  if (p2.length !== 2) return null;
-  const h2 = parseInt(p2[0], 10), m2 = parseInt(p2[1], 10);
+  const a = String(rec.checkIn).split(':'), b = String(rec.checkOut).split(':');
+  if (a.length !== 2 || b.length !== 2) return null;
+  let diff = (parseInt(b[0], 10) * 60 + parseInt(b[1], 10)) - (parseInt(a[0], 10) * 60 + parseInt(a[1], 10));
+  if (isNaN(diff)) return null;
+  if (diff < 0) diff += 1440; // Over nat
+  if (rec.breakOn) diff = Math.max(0, diff - (parseInt(rec.breakMin, 10) || 0));
+  return diff;
+}
 
-  let workMin = (h2*60+m2) - (h1*60+m1);
-  if (workMin < 0) workMin += 1440; // Over nat
-  const totalMin = workMin + (rec.extraMin || 0) + (rec.meetingMin || 0);
+function formatWorkHours(rec) {
+  const net = netWorkMin(rec);
+  if (net === null) return null;
+  const totalMin = net + (rec.extraMin || 0) + (rec.meetingMin || 0);
   return `${Math.floor(totalMin/60)}${t('hUnit')} ${totalMin%60}min`;
 }
 
@@ -389,10 +423,79 @@ function changeMonth(delta) {
   renderCalendar();
 }
 
+// ===== UGE-HJÆLPERE (ISO 8601: ugen starter mandag, uge 1 indeholder 4. januar) =====
+function isoWeekOf(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + 3);            // torsdag i samme uge
+  const isoYear = d.getFullYear();
+  const jan4 = new Date(isoYear, 0, 4);
+  const week = 1 + Math.round(((d - jan4) / 86400000 - 3 + ((jan4.getDay() + 6) % 7)) / 7);
+  return { year: isoYear, week };
+}
+function isoWeeksIn(year) { return isoWeekOf(new Date(year, 11, 28)).week; }  // 52 eller 53
+function isoWeekStart(year, week) {
+  const jan4 = new Date(year, 0, 4);
+  return new Date(year, 0, 4 - ((jan4.getDay() + 6) % 7) + (week - 1) * 7);   // mandag
+}
+function addDaysTo(date, n) { return new Date(date.getFullYear(), date.getMonth(), date.getDate() + n); }
+
+// "2–8 noiembrie 2026" / "30 noiembrie – 6 decembrie 2026" / over årsskifte med begge år
+function rangeLabel(a, b, withYear) {
+  const mn = i => lang === 'en' ? t('months')[i] : t('months')[i].toLowerCase();
+  const dd = n => lang === 'da' ? n + '.' : String(n);
+  const d1 = a.getDate(), d2 = b.getDate(), ya = a.getFullYear(), yb = b.getFullYear();
+  const sameY = ya === yb, sameM = sameY && a.getMonth() === b.getMonth();
+  if (lang === 'en') {
+    if (sameM) return `${mn(a.getMonth())} ${d1}–${d2}${withYear ? ', ' + ya : ''}`;
+    if (sameY) return `${mn(a.getMonth())} ${d1} – ${mn(b.getMonth())} ${d2}${withYear ? ', ' + ya : ''}`;
+    return `${mn(a.getMonth())} ${d1}, ${ya} – ${mn(b.getMonth())} ${d2}, ${yb}`;
+  }
+  if (sameM) return `${dd(d1)}–${dd(d2)} ${mn(b.getMonth())}${withYear ? ' ' + ya : ''}`;
+  if (sameY) return `${dd(d1)} ${mn(a.getMonth())} – ${dd(d2)} ${mn(b.getMonth())}${withYear ? ' ' + ya : ''}`;
+  return `${dd(d1)} ${mn(a.getMonth())} ${ya} – ${dd(d2)} ${mn(b.getMonth())} ${yb}`;
+}
+
+function fillWeekSelect(year, week) {
+  const sel = document.getElementById('reportWeek');
+  const n = isoWeeksIn(year);
+  let html = '';
+  for (let w = 1; w <= n; w++) {
+    const s = isoWeekStart(year, w);
+    html += `<option value="${w}">${t('week')} ${w}: ${rangeLabel(s, addDaysTo(s, 6), false)}</option>`;
+  }
+  sel.innerHTML = html;
+  sel.value = String(Math.min(Math.max(week, 1), n));
+}
+
+function showReportMode() {
+  const weekly = document.getElementById('reportType').value === 'week';
+  document.getElementById('repMonthGroup').style.display = weekly ? 'none' : '';
+  document.getElementById('repWeekGroup').style.display = weekly ? '' : 'none';
+}
+// Saptamana implicita pentru luna/anul alese: cea de azi daca e luna curenta, altfel cea cu data de 1
+function prepWeekSelect() {
+  const m = parseInt(document.getElementById('reportMonth').value, 10) || currentMonth + 1;
+  const y = parseInt(document.getElementById('reportYear').value, 10) || currentYear;
+  const now = new Date();
+  const ref = (m === now.getMonth() + 1 && y === now.getFullYear()) ? now : new Date(y, m - 1, 1);
+  const iw = isoWeekOf(ref);
+  const yearSel = document.getElementById('reportYear');
+  if (document.getElementById('reportType').value === 'week' && [...yearSel.options].some(o => o.value === String(iw.year))) yearSel.value = String(iw.year);
+  fillWeekSelect(parseInt(yearSel.value, 10), iw.week);
+}
+function onReportTypeChange() { prepWeekSelect(); showReportMode(); generateReport(); }
+function onReportYearChange() {
+  const y = parseInt(document.getElementById('reportYear').value, 10);
+  fillWeekSelect(y, parseInt(document.getElementById('reportWeek').value, 10) || 1);
+  generateReport();
+}
+
 function goToReport() {
   document.getElementById('reportModal').classList.add('active');
   // Implicit: luna si anul afisate in calendar (la pornire = luna/anul de azi)
   fillReportSelects(currentMonth + 1, currentYear);
+  prepWeekSelect();
+  showReportMode();
   generateReport();
 }
 
@@ -407,8 +510,17 @@ function openModal(dateStr) {
   document.getElementById('checkOut').value = rec.checkOut || '';
   document.getElementById('extraMin').value = (rec.extraMin != null) ? rec.extraMin : 0;
   document.getElementById('meetingMin').value = (rec.meetingMin != null) ? rec.meetingMin : 0;
+  // Pauză: zi nouă = bifată, 30 min. Zile vechi (salvate înainte de funcție) rămân nebifate, ca totalurile să nu se schimbe.
+  const isNew = !dataStore[dateStr];
+  document.getElementById('breakOn').checked = isNew ? true : rec.breakOn === true;
+  document.getElementById('breakMin').value = (rec.breakMin != null) ? rec.breakMin : 30;
+  syncBreak();
   document.getElementById('notes').value = String(rec.notes || '');
   document.getElementById('dayModal').classList.add('active');
+}
+
+function syncBreak() {
+  document.getElementById('breakMin').disabled = !document.getElementById('breakOn').checked;
 }
 
 function closeModal() { document.getElementById('dayModal').classList.remove('active'); }
@@ -420,6 +532,8 @@ function saveDay() {
     checkOut: document.getElementById('checkOut').value || null,
     extraMin: parseInt(document.getElementById('extraMin').value) || 0,
     meetingMin: parseInt(document.getElementById('meetingMin').value) || 0,
+    breakOn: document.getElementById('breakOn').checked,
+    breakMin: Math.max(0, parseInt(document.getElementById('breakMin').value, 10) || 0),
     notes: document.getElementById('notes').value || ''
   };
   saveData(); closeModal(); renderCalendar();
@@ -429,41 +543,56 @@ function fmtDur(totalMin) {
   return `${Math.floor(totalMin / 60)}${t('hUnit')} ${totalMin % 60} min`;
 }
 
-function generateReport() {
-  const m = parseInt(document.getElementById('reportMonth').value, 10);
-  const y = parseInt(document.getElementById('reportYear').value, 10);
-  if (isNaN(m) || isNaN(y)) return;
-
-  const daysInMonth = new Date(y, m, 0).getDate();
-  let workMin = 0, meetingMin = 0;
-  let syg = 0, sygBarn = 0, ferie = 0;
-
-  for (let d = 1; d <= daysInMonth; d++) {
-    const rec = dataStore[`${y}-${m}-${d}`];
+// Summerer en liste af datoer (samme regler for måned og uge)
+function summarizeDates(dates) {
+  let workMin = 0, meetingMin = 0, syg = 0, sygBarn = 0, ferie = 0;
+  for (const dt of dates) {
+    const rec = dataStore[`${dt.getFullYear()}-${dt.getMonth() + 1}-${dt.getDate()}`];
     if (!rec) continue;
-
     if (rec.status === 'syg') syg++;
     else if (rec.status === 'syg_barn') sygBarn++;
     else if (rec.status === 'ferie') ferie++;
-
-    if (rec.checkIn && rec.checkOut) {
-      const [h1, m1] = String(rec.checkIn).split(':').map(Number);
-      const [h2, m2] = String(rec.checkOut).split(':').map(Number);
-      let diff = (h2*60+m2) - (h1*60+m1);
-      if (diff < 0) diff += 1440;
-      workMin += diff || 0;
-    }
+    const net = netWorkMin(rec);
+    if (net !== null) workMin += net;
     workMin += (rec.extraMin || 0);
     meetingMin += (rec.meetingMin || 0);
   }
+  return { workMin, meetingMin, syg, sygBarn, ferie };
+}
 
+function generateReport() {
+  const y = parseInt(document.getElementById('reportYear').value, 10);
+  if (isNaN(y)) return;
+  const weekly = document.getElementById('reportType').value === 'week';
+  let title, dates = [];
+
+  if (weekly) {
+    const w = parseInt(document.getElementById('reportWeek').value, 10);
+    if (isNaN(w)) return;
+    const start = isoWeekStart(y, w);
+    for (let i = 0; i < 7; i++) dates.push(addDaysTo(start, i));
+    title = `${t('week')} ${w}, ${rangeLabel(start, dates[6], true)}:`;
+  } else {
+    const m = parseInt(document.getElementById('reportMonth').value, 10);
+    if (isNaN(m)) return;
+    const daysInMonth = new Date(y, m, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) dates.push(new Date(y, m - 1, d));
+    title = `${t('months')[m - 1]} ${y}:`;
+  }
+
+  const s = summarizeDates(dates);
   document.getElementById('reportOutput').textContent =
-    `${t('months')[m-1]} ${y}:\n` +
-    `${t('workLine', fmtDur(workMin))}\n` +
-    `${t('meetLine', fmtDur(meetingMin))}\n` +
-    `${t('sygLine', syg)}\n` +
-    `${t('sygBarnLine', sygBarn)}\n` +
-    `${t('ferieLine', ferie)}`;
+    `${title}
+` +
+    `${t('workLine', fmtDur(s.workMin))}
+` +
+    `${t('meetLine', fmtDur(s.meetingMin))}
+` +
+    `${t('sygLine', s.syg)}
+` +
+    `${t('sygBarnLine', s.sygBarn)}
+` +
+    `${t('ferieLine', s.ferie)}`;
 }
 
 // ===== INDSTILLINGER =====
@@ -529,6 +658,8 @@ function parseBackup(text) {
       checkOut: /^\d{1,2}:\d{2}$/.test(v.checkOut || '') ? v.checkOut : null,
       extraMin: Math.max(0, parseInt(v.extraMin, 10) || 0),
       meetingMin: Math.max(0, parseInt(v.meetingMin, 10) || 0),
+      breakOn: v.breakOn === true,
+      breakMin: isNaN(parseInt(v.breakMin, 10)) ? 30 : Math.max(0, parseInt(v.breakMin, 10)),
       notes: String(v.notes || '')
     };
   }
