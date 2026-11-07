@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Arbejdstimer">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Arbejdstimer DK</title>
+  <style>
+    :root { --primary: #0f766e; --bg: #f8fafc; --card: #ffffff; --text: #0f172a; --muted: #64748b; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: var(--bg); color: var(--text); max-width: 800px; margin: 0 auto;
+           padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(64px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+           touch-action: manipulation; -webkit-text-size-adjust: 100%; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+    h1 { font-size: 1.4rem; }
+    .nav-buttons { display: flex; gap: 8px; }
+    button { padding: 6px 10px; border: none; background: var(--primary); color: white; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+    button.secondary { background: var(--muted); }
+    .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 20px; }
+    .day-name { text-align: center; font-weight: bold; color: var(--muted); padding: 8px 0; font-size: 0.85rem; }
+    .day-cell { background: var(--card); border: 1px solid #e2e8f0; border-radius: 6px; min-height: 60px; padding: 4px; position: relative; cursor: pointer; transition: all 0.15s; }
+    .day-cell:hover { border-color: var(--primary); box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+    .day-cell.today { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(15,118,110,0.2); }
+    .day-cell.status-normal    { background: #c9f2d3; }  /* verde pal */
+    .day-cell.status-ferie     { background: #fbd9e8; }  /* roz pal */
+    .day-cell.status-syg       { background: #eef6c4; }  /* verzui pal (spre galben) */
+    .day-cell.status-syg_barn  { background: #d6efe6; }  /* verzui pal-pal (spre menta) */
+    .day-cell.status-helligdag, .day-cell.holiday { background: #d4e8fb; }  /* bleu pal */
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 12px; font-size: 0.78rem; color: var(--muted); }
+    .legend span.lg { display: inline-flex; align-items: center; gap: 4px; }
+    .legend i { width: 12px; height: 12px; border-radius: 3px; border: 1px solid #cbd5e1; display: inline-block; }
+    .day-number { font-weight: bold; margin-bottom: 2px; font-size: 0.95rem; }
+    .work-hours { font-size: 0.75rem; color: var(--primary); font-weight: 600; background: rgba(255,255,255,0.75); padding: 1px 4px; border-radius: 3px; display: inline-block; margin-top: 2px; }
+    .note-star { position: absolute; top: 4px; right: 4px; background: none; border: none; font-size: 16px; cursor: pointer; padding: 0; color: #f59e0b; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2)); }
+    .note-star:hover { transform: scale(1.2); }
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center; }
+    .modal.active { display: flex; }
+    .modal-content { background: white; padding: 20px; border-radius: 12px; width: 90%; max-width: 400px; max-height: 85vh; overflow-y: auto; }
+    .form-group { margin-bottom: 12px; }
+    label { display: block; margin-bottom: 4px; font-weight: 500; color: var(--muted); font-size: 0.9rem; }
+    input, select, textarea { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 1rem; }
+    textarea { resize: vertical; min-height: 70px; }
+    .report-box { background: #f0fdf4; border: 1px solid #bbf7d0; padding: 12px; border-radius: 8px; margin-top: 12px; white-space: pre-wrap; font-family: monospace; line-height: 1.5; }
+    .divider { height: 1px; background: #e2e8f0; margin: 12px 0; }
+    .help { font-size: 0.8rem; color: var(--muted); margin-bottom: 8px; }
+    /* Rotita de setari: mica, discreta, in coltul din stanga-jos */
+    .settings-btn { position: fixed; left: max(12px, env(safe-area-inset-left)); bottom: max(12px, env(safe-area-inset-bottom));
+                    width: 34px; height: 34px; padding: 0; border-radius: 50%; background: transparent; color: var(--muted);
+                    border: 1px solid #e2e8f0; opacity: 0.45; font-size: 18px; line-height: 1; z-index: 50; }
+    .settings-btn:hover, .settings-btn:focus { opacity: 1; }
+    @media (max-width: 600px) { .calendar-grid { gap: 2px; } .day-cell { min-height: 50px; padding: 3px; } .day-number { font-size: 0.8rem; } .work-hours { font-size: 0.7rem; } h1 { font-size: 1.2rem; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 id="month-title"></h1>
+    <div class="nav-buttons">
+      <button class="secondary" onclick="changeMonth(-1)">←</button>
+      <button class="secondary" onclick="goToReport()" data-i18n="report">Rapport</button>
+      <button class="secondary" onclick="changeMonth(1)">→</button>
+    </div>
+  </header>
+
+  <div class="legend">
+    <span class="lg"><i style="background:#c9f2d3"></i><span data-i18n="status_normal"></span></span>
+    <span class="lg"><i style="background:#fbd9e8"></i><span data-i18n="status_ferie"></span></span>
+    <span class="lg"><i style="background:#eef6c4"></i><span data-i18n="status_syg"></span></span>
+    <span class="lg"><i style="background:#d6efe6"></i><span data-i18n="status_syg_barn"></span></span>
+    <span class="lg"><i style="background:#d4e8fb"></i><span data-i18n="status_helligdag"></span></span>
+  </div>
+
+  <div class="calendar-grid" id="calendar"></div>
+
+  <button class="settings-btn" id="settingsBtn" onclick="openSettings()" data-i18n-title="settings" aria-label="Settings">&#9881;&#xFE0E;</button>
+
+  <!-- Dag -->
+  <div class="modal" id="dayModal">
+    <div class="modal-content">
+      <h3 style="margin-bottom:8px;" id="modalTitle"></h3>
+      <div class="form-group">
+        <label data-i18n="status"></label>
+        <select id="status"></select>
+      </div>
+      <div class="divider"></div>
+      <div class="form-group" style="display:flex; gap:8px;">
+        <div style="flex:1"><label data-i18n="checkIn"></label><input type="time" id="checkIn"></div>
+        <div style="flex:1"><label data-i18n="checkOut"></label><input type="time" id="checkOut"></div>
+      </div>
+      <div class="form-group"><label data-i18n="extraMin"></label><input type="number" id="extraMin" value="0" min="0"></div>
+      <div class="form-group"><label data-i18n="meetingMin"></label><input type="number" id="meetingMin" value="0" min="0"></div>
+      <div class="divider"></div>
+      <div class="form-group">
+        <label data-i18n="notes"></label>
+        <textarea id="notes" data-i18n-ph="notesPh"></textarea>
+      </div>
+      <button onclick="saveDay()" style="width:100%; margin-top:8px;" data-i18n="save"></button>
+      <button class="secondary" onclick="closeModal()" style="width:100%; margin-top:4px;" data-i18n="cancel"></button>
+    </div>
+  </div>
+
+  <!-- Rapport -->
+  <div class="modal" id="reportModal">
+    <div class="modal-content">
+      <h3 data-i18n="monthlyReport"></h3>
+      <div class="form-group" style="margin-top:12px;">
+        <label data-i18n="month"></label><select id="reportMonth"></select>
+      </div>
+      <div class="form-group">
+        <label data-i18n="year"></label><select id="reportYear"></select>
+      </div>
+      <button onclick="generateReport()" style="width:100%; margin-top:8px;" data-i18n="generate"></button>
+      <div class="report-box" id="reportOutput"></div>
+      <button class="secondary" onclick="document.getElementById('reportModal').classList.remove('active')" style="width:100%; margin-top:8px;" data-i18n="close"></button>
+    </div>
+  </div>
+
+  <!-- Indstillinger -->
+  <div class="modal" id="settingsModal">
+    <div class="modal-content">
+      <h3 data-i18n="settings"></h3>
+
+      <div class="form-group" style="margin-top:12px;">
+        <label for="langSelect" data-i18n="language"></label>
+        <select id="langSelect" onchange="setLanguage(this.value)">
+          <option value="da">Dansk</option>
+          <option value="en">English</option>
+          <option value="ro">Română</option>
+        </select>
+        <div class="help" style="margin-top:6px;" data-i18n="langHelp"></div>
+      </div>
+
+      <div class="divider"></div>
+      <h3 style="font-size:1rem;" data-i18n="backup"></h3>
+      <div class="help" style="margin-top:4px;" data-i18n="backupHelp"></div>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <button onclick="exportData()" style="flex:1;" data-i18n="export"></button>
+        <button class="secondary" onclick="document.getElementById('importFile').click()" style="flex:1;" data-i18n="import"></button>
+      </div>
+      <input type="file" id="importFile" accept=".json,application/json" style="display:none;" onchange="importFromFile(this)">
+      <textarea id="backupText" data-i18n-ph="backupPh" style="margin-top:8px;"></textarea>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <button class="secondary" onclick="copyBackup()" style="flex:1;" data-i18n="copyText"></button>
+        <button class="secondary" onclick="importFromText()" style="flex:1;" data-i18n="importText"></button>
+      </div>
+      <div id="backupMsg" style="margin-top:8px; font-size:0.85rem; min-height:1.2em;"></div>
+
+      <button class="secondary" onclick="closeSettings()" style="width:100%; margin-top:8px;" data-i18n="close"></button>
+    </div>
+  </div>
+
+<script>
+// ===== KONSTANTER =====
+const STORAGE_KEY = 'work_tracker_dk_v2';   // dagsdata (ændres ikke af sprogvalg)
+const LANG_KEY = 'work_tracker_lang_v1';    // kun sprog, gemmes adskilt fra data
+const VALID_STATUS = ['normal', 'syg', 'syg_barn', 'ferie', 'helligdag'];
+
+// ===== SPROG / LIMBI / LANGUAGES =====
+// Rumænsk: 1 zi, 2-19 zile, 20+ "de zile"
+function roDays(n) { const m = n % 100; return n === 1 ? 'zi' : (n !== 0 && m >= 20 ? 'de zile' : 'zile'); }
+
+const STRINGS = {
+  da: {
+    months: ['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'],
+    days: ['Man','Tir','Ons','Tor','Fre','Lør','Søn'],
+    status_normal: 'Normal', status_syg: 'Syg', status_syg_barn: 'Syg barn', status_ferie: 'Ferie', status_helligdag: 'Helligdag',
+    report: 'Rapport', monthlyReport: 'Månedlig Rapport', month: 'Måned', year: 'År', generate: 'Generer rapport', close: 'Luk',
+    date: 'Dato', status: 'Status', checkIn: 'Indgang (TT:MM)', checkOut: 'Udgang (TT:MM)',
+    extraMin: 'Ekstra minutter', meetingMin: 'Møde minutter', notes: 'Noter / Bemærkninger',
+    notesPh: 'Indtast noter her... (f.eks. møde, opgave, status)', save: 'Gem ændringer', cancel: 'Annuller',
+    settings: 'Indstillinger', language: 'Sprog', langHelp: 'Dine data ændres ikke, når du skifter sprog.',
+    backup: 'Sikkerhedskopi', backupHelp: 'Gem dine data i en fil, eller flyt dem til en ny telefon.',
+    export: 'Eksporter', import: 'Importer', copyText: 'Kopiér tekst', importText: 'Importer fra tekst',
+    backupPh: 'Eller indsæt/kopiér sikkerhedskopi som tekst her...',
+    msgShared: 'Sikkerhedskopi delt. Teksten ligger også i feltet nedenfor.',
+    msgDownloaded: 'Filen er hentet. Teksten ligger også i feltet nedenfor.',
+    msgCopied: 'Teksten er kopieret.', msgCopyManual: 'Markér teksten og kopiér den manuelt.',
+    errInvalidText: 'Ugyldig tekst – det er ikke en sikkerhedskopi.', errNotBackup: 'Det er ikke en sikkerhedskopi fra Arbejdstimer.',
+    errEmpty: 'Indsæt først sikkerhedskopi-teksten i feltet.', errRead: 'Kunne ikke læse filen.',
+    msgImported: n => `${n} ${n === 1 ? 'dag' : 'dage'} importeret.`,
+    confirmImport: (n, now) => `Importér ${n} ${n === 1 ? 'dag' : 'dage'}? Det erstatter de ${now} dage, der er gemt på denne enhed.`,
+    hUnit: 't',
+    workLine: d => `${d} på arbejde`, meetLine: d => `${d} møder`,
+    sygLine: n => `${n} syg ${n === 1 ? 'dag' : 'dage'}`,
+    sygBarnLine: n => `${n} syg barn ${n === 1 ? 'dag' : 'dage'}`,
+    ferieLine: n => `${n} ferie ${n === 1 ? 'dag' : 'dage'}`
+  },
+  en: {
+    months: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+    days: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+    status_normal: 'Normal', status_syg: 'Sick', status_syg_barn: 'Sick child', status_ferie: 'Vacation', status_helligdag: 'Public holiday',
+    report: 'Report', monthlyReport: 'Monthly report', month: 'Month', year: 'Year', generate: 'Generate report', close: 'Close',
+    date: 'Date', status: 'Status', checkIn: 'Check-in (HH:MM)', checkOut: 'Check-out (HH:MM)',
+    extraMin: 'Extra minutes', meetingMin: 'Meeting minutes', notes: 'Notes / Remarks',
+    notesPh: 'Write notes here... (e.g. meeting, task, status)', save: 'Save changes', cancel: 'Cancel',
+    settings: 'Settings', language: 'Language', langHelp: 'Your data is not changed when you switch language.',
+    backup: 'Backup', backupHelp: 'Save your data to a file, or move it to a new phone.',
+    export: 'Export', import: 'Import', copyText: 'Copy text', importText: 'Import from text',
+    backupPh: 'Or paste / copy the backup as text here...',
+    msgShared: 'Backup shared. The text is also in the box below.',
+    msgDownloaded: 'File downloaded. The text is also in the box below.',
+    msgCopied: 'Text copied.', msgCopyManual: 'Select the text and copy it manually.',
+    errInvalidText: 'Invalid text – this is not a backup.', errNotBackup: 'This is not a backup from Arbejdstimer.',
+    errEmpty: 'Paste the backup text into the box first.', errRead: 'Could not read the file.',
+    msgImported: n => `Imported ${n} ${n === 1 ? 'day' : 'days'}.`,
+    confirmImport: (n, now) => `Import ${n} ${n === 1 ? 'day' : 'days'}? This replaces the ${now} days saved on this device.`,
+    hUnit: 'h',
+    workLine: d => `${d} at work`, meetLine: d => `${d} meetings`,
+    sygLine: n => `${n} sick ${n === 1 ? 'day' : 'days'}`,
+    sygBarnLine: n => `${n} sick child ${n === 1 ? 'day' : 'days'}`,
+    ferieLine: n => `${n} vacation ${n === 1 ? 'day' : 'days'}`
+  },
+  ro: {
+    months: ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'],
+    days: ['Lun','Mar','Mie','Joi','Vin','Sâm','Dum'],
+    status_normal: 'Normal', status_syg: 'Boală', status_syg_barn: 'Copil bolnav', status_ferie: 'Concediu', status_helligdag: 'Sărbătoare legală',
+    report: 'Raport', monthlyReport: 'Raport lunar', month: 'Luna', year: 'Anul', generate: 'Generează raportul', close: 'Închide',
+    date: 'Data', status: 'Status', checkIn: 'Intrare (HH:MM)', checkOut: 'Ieșire (HH:MM)',
+    extraMin: 'Minute în plus', meetingMin: 'Minute de întâlniri', notes: 'Notițe / Observații',
+    notesPh: 'Scrie notițe aici... (ex. întâlnire, sarcină, stare)', save: 'Salvează', cancel: 'Anulează',
+    settings: 'Setări', language: 'Limba', langHelp: 'Datele tale nu se schimbă când schimbi limba.',
+    backup: 'Backup', backupHelp: 'Salvează datele într-un fișier sau mută-le pe un telefon nou.',
+    export: 'Exportă', import: 'Importă', copyText: 'Copiază textul', importText: 'Importă din text',
+    backupPh: 'Sau lipește / copiază aici backup-ul ca text...',
+    msgShared: 'Backup partajat. Textul este și în caseta de mai jos.',
+    msgDownloaded: 'Fișierul a fost descărcat. Textul este și în caseta de mai jos.',
+    msgCopied: 'Textul a fost copiat.', msgCopyManual: 'Selectează textul și copiază-l manual.',
+    errInvalidText: 'Text invalid – nu este un backup.', errNotBackup: 'Acesta nu este un backup de la Arbejdstimer.',
+    errEmpty: 'Lipește mai întâi textul backup-ului în casetă.', errRead: 'Fișierul nu a putut fi citit.',
+    msgImported: n => `Import reușit: ${n} ${roDays(n)}.`,
+    confirmImport: (n, now) => `Imporți ${n} ${roDays(n)}? Aceasta înlocuiește datele salvate pe acest dispozitiv (${now} ${roDays(now)}).`,
+    hUnit: 'h',
+    workLine: d => `${d} la muncă`, meetLine: d => `${d} întâlniri`,
+    sygLine: n => `${n} ${roDays(n)} de boală`,
+    sygBarnLine: n => `${n} ${roDays(n)} de boală copil`,
+    ferieLine: n => `${n} ${roDays(n)} de concediu`
+  }
+};
+
+let lang = 'da';
+function detectLang() {
+  const l = String((navigator.languages && navigator.languages[0]) || navigator.language || '').toLowerCase();
+  if (l.indexOf('ro') === 0) return 'ro';
+  if (l.indexOf('en') === 0) return 'en';
+  return 'da';
+}
+function loadLang() {
+  try { const s = localStorage.getItem(LANG_KEY); if (s && STRINGS[s]) return s; } catch (e) {}
+  return detectLang();
+}
+function t(key, ...args) {
+  const v = (STRINGS[lang] && STRINGS[lang][key] !== undefined) ? STRINGS[lang][key] : (STRINGS.da[key] !== undefined ? STRINGS.da[key] : key);
+  return typeof v === 'function' ? v(...args) : v;
+}
+
+// Sætter sproget og tegner alt om. Rører ikke ved dagsdata.
+function setLanguage(l) {
+  if (!STRINGS[l]) return;
+  lang = l;
+  try { localStorage.setItem(LANG_KEY, l); } catch (e) {}
+  applyLanguage();
+}
+
+function fillStatusSelect() {
+  const sel = document.getElementById('status');
+  const keep = sel.value;
+  sel.innerHTML = VALID_STATUS.map(s => `<option value="${s}">${t('status_' + s)}</option>`).join('');
+  sel.value = VALID_STATUS.includes(keep) ? keep : 'normal';
+}
+
+function fillReportSelects(m, y) {
+  const monthSel = document.getElementById('reportMonth'), yearSel = document.getElementById('reportYear');
+  monthSel.innerHTML = t('months').map((name, i) => `<option value="${i + 1}">${name}</option>`).join('');
+  yearSel.innerHTML = '';
+  for (let yy = currentYear - 2; yy <= currentYear + 2; yy++) yearSel.innerHTML += `<option value="${yy}">${yy}</option>`;
+  monthSel.value = String(m); yearSel.value = String(y);
+}
+
+function applyLanguage() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.getAttribute('data-i18n')); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.getAttribute('data-i18n-ph')); });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => { const s = t(el.getAttribute('data-i18n-title')); el.title = s; el.setAttribute('aria-label', s); });
+  document.getElementById('langSelect').value = lang;
+  fillStatusSelect();
+  renderCalendar();
+  if (document.getElementById('reportModal').classList.contains('active')) {
+    fillReportSelects(parseInt(document.getElementById('reportMonth').value, 10) || currentMonth + 1,
+                      parseInt(document.getElementById('reportYear').value, 10) || currentYear);
+    generateReport();
+  }
+  document.getElementById('backupMsg').textContent = '';
+}
+
+// ===== DATA =====
+let dataStore = {};
+try { dataStore = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch (e) { console.error('Data parse error', e); dataStore = {}; }
+
+let currentYear = new Date().getFullYear();
+let currentMonth = new Date().getMonth(); // 0-11
+let selectedDateStr = '';
+
+function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(dataStore)); }
+
+// Påskedato (Meeus/Jones/Butcher, gyldig 1900-2099)
+function getEaster(year) {
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day);
+}
+
+function getHolidays(year) {
+  const easter = getEaster(year);
+  const addDays = (d, n) => new Date(d.getTime() + n * 86400000);
+  return new Set([
+    new Date(year, 0, 1), addDays(easter, -3), addDays(easter, -2), easter, addDays(easter, 1),
+    addDays(easter, 26), new Date(year, 5, 5), addDays(easter, 39), addDays(easter, 49), addDays(easter, 50),
+    new Date(year, 11, 24), new Date(year, 11, 25), new Date(year, 11, 26)
+  ].map(d => `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`));
+}
+
+function formatWorkHours(rec) {
+  if (!rec || !rec.checkIn || !rec.checkOut) return null;
+  const parts = rec.checkIn.split(':');
+  if (parts.length !== 2) return null;
+  const h1 = parseInt(parts[0], 10), m1 = parseInt(parts[1], 10);
+  const p2 = rec.checkOut.split(':');
+  if (p2.length !== 2) return null;
+  const h2 = parseInt(p2[0], 10), m2 = parseInt(p2[1], 10);
+
+  let workMin = (h2*60+m2) - (h1*60+m1);
+  if (workMin < 0) workMin += 1440; // Over nat
+  const totalMin = workMin + (rec.extraMin || 0) + (rec.meetingMin || 0);
+  return `${Math.floor(totalMin/60)}${t('hUnit')} ${totalMin%60}min`;
+}
+
+function renderCalendar() {
+  const cal = document.getElementById('calendar');
+  if (!cal) return;
+  cal.innerHTML = '';
+
+  t('days').forEach(d => cal.innerHTML += `<div class="day-name">${d}</div>`);
+
+  const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const startOffset = (firstDay + 6) % 7;
+
+  for (let i = 0; i < startOffset; i++) cal.innerHTML += '<div></div>';
+
+  const holidays = getHolidays(currentYear);
+  document.getElementById('month-title').textContent = `${t('months')[currentMonth] ?? ''} ${currentYear}`;
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${currentYear}-${currentMonth+1}-${d}`;
+    const isHoli = holidays.has(dateStr);
+    const rec = dataStore[dateStr] || {};
+    const hoursText = formatWorkHours(rec);
+    const hasNotes = !!rec.notes && String(rec.notes).trim().length > 0;
+
+    let classes = 'day-cell';
+    if (d === new Date().getDate() && currentMonth === new Date().getMonth() && currentYear === new Date().getFullYear()) classes += ' today';
+    if (VALID_STATUS.includes(rec.status)) classes += ` status-${rec.status}`;
+    else if (isHoli) classes += ' holiday';
+
+    cal.innerHTML += `
+      <div class="${classes}" onclick="openModal('${dateStr}')">
+        <div class="day-number">${d}</div>
+        ${hoursText ? `<div class="work-hours">${hoursText}</div>` : ''}
+        ${hasNotes ? `<button class="note-star" onclick="event.stopPropagation(); openModal('${dateStr}')">⭐</button>` : ''}
+      </div>
+    `;
+  }
+}
+
+function changeMonth(delta) {
+  currentMonth += delta;
+  if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+  if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+  renderCalendar();
+}
+
+function goToReport() {
+  document.getElementById('reportModal').classList.add('active');
+  // Implicit: luna si anul afisate in calendar (la pornire = luna/anul de azi)
+  fillReportSelects(currentMonth + 1, currentYear);
+  generateReport();
+}
+
+function openModal(dateStr) {
+  selectedDateStr = dateStr;
+  const rec = dataStore[dateStr] || {};
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const monthName = lang === 'en' ? t('months')[m - 1] : t('months')[m - 1].toLowerCase(); // da/ro: luna cu litera mica
+  document.getElementById('modalTitle').textContent = `${t('date')}: ${d} ${monthName} ${y}`;
+  document.getElementById('status').value = VALID_STATUS.includes(rec.status) ? rec.status : 'normal';
+  document.getElementById('checkIn').value = rec.checkIn || '';
+  document.getElementById('checkOut').value = rec.checkOut || '';
+  document.getElementById('extraMin').value = (rec.extraMin != null) ? rec.extraMin : 0;
+  document.getElementById('meetingMin').value = (rec.meetingMin != null) ? rec.meetingMin : 0;
+  document.getElementById('notes').value = String(rec.notes || '');
+  document.getElementById('dayModal').classList.add('active');
+}
+
+function closeModal() { document.getElementById('dayModal').classList.remove('active'); }
+
+function saveDay() {
+  dataStore[selectedDateStr] = {
+    status: document.getElementById('status').value,
+    checkIn: document.getElementById('checkIn').value || null,
+    checkOut: document.getElementById('checkOut').value || null,
+    extraMin: parseInt(document.getElementById('extraMin').value) || 0,
+    meetingMin: parseInt(document.getElementById('meetingMin').value) || 0,
+    notes: document.getElementById('notes').value || ''
+  };
+  saveData(); closeModal(); renderCalendar();
+}
+
+function fmtDur(totalMin) {
+  return `${Math.floor(totalMin / 60)}${t('hUnit')} ${totalMin % 60} min`;
+}
+
+function generateReport() {
+  const m = parseInt(document.getElementById('reportMonth').value, 10);
+  const y = parseInt(document.getElementById('reportYear').value, 10);
+  if (isNaN(m) || isNaN(y)) return;
+
+  const daysInMonth = new Date(y, m, 0).getDate();
+  let workMin = 0, meetingMin = 0;
+  let syg = 0, sygBarn = 0, ferie = 0;
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const rec = dataStore[`${y}-${m}-${d}`];
+    if (!rec) continue;
+
+    if (rec.status === 'syg') syg++;
+    else if (rec.status === 'syg_barn') sygBarn++;
+    else if (rec.status === 'ferie') ferie++;
+
+    if (rec.checkIn && rec.checkOut) {
+      const [h1, m1] = String(rec.checkIn).split(':').map(Number);
+      const [h2, m2] = String(rec.checkOut).split(':').map(Number);
+      let diff = (h2*60+m2) - (h1*60+m1);
+      if (diff < 0) diff += 1440;
+      workMin += diff || 0;
+    }
+    workMin += (rec.extraMin || 0);
+    meetingMin += (rec.meetingMin || 0);
+  }
+
+  document.getElementById('reportOutput').textContent =
+    `${t('months')[m-1]} ${y}:\n` +
+    `${t('workLine', fmtDur(workMin))}\n` +
+    `${t('meetLine', fmtDur(meetingMin))}\n` +
+    `${t('sygLine', syg)}\n` +
+    `${t('sygBarnLine', sygBarn)}\n` +
+    `${t('ferieLine', ferie)}`;
+}
+
+// ===== INDSTILLINGER =====
+function openSettings() {
+  document.getElementById('langSelect').value = lang;
+  document.getElementById('backupMsg').textContent = '';
+  document.getElementById('settingsModal').classList.add('active');
+}
+function closeSettings() { document.getElementById('settingsModal').classList.remove('active'); }
+
+// ===== SIKKERHEDSKOPI (eksport / import) =====
+function backupMsg(text, ok = true) {
+  const el = document.getElementById('backupMsg');
+  el.textContent = text;
+  el.style.color = ok ? '#0f766e' : '#b91c1c';
+}
+
+function backupPayload() {
+  return JSON.stringify({ app: 'arbejdstimer-dk', version: 2, exported: new Date().toISOString(), data: dataStore }, null, 2);
+}
+
+async function exportData() {
+  const json = backupPayload();
+  const name = `arbejdstimer-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.getElementById('backupText').value = json;
+  try {
+    const file = new File([json], name, { type: 'application/json' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: name });
+      backupMsg(t('msgShared'));
+      return;
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return; // brugeren lukkede delingsmenuen
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  backupMsg(t('msgDownloaded'));
+}
+
+async function copyBackup() {
+  const box = document.getElementById('backupText');
+  if (!box.value.trim()) box.value = backupPayload();
+  try { await navigator.clipboard.writeText(box.value); backupMsg(t('msgCopied')); }
+  catch (e) { box.focus(); box.select(); backupMsg(t('msgCopyManual')); }
+}
+
+// Validerer og renser en sikkerhedskopi. Kaster en fejl hvis message er en tekstnøgle.
+function parseBackup(text) {
+  let obj;
+  try { obj = JSON.parse(text); } catch (e) { throw new Error('errInvalidText'); }
+  const data = obj && obj.app === 'arbejdstimer-dk' ? obj.data : null;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('errNotBackup');
+  const clean = {};
+  for (const [key, v] of Object.entries(data)) {
+    if (!/^\d{4}-\d{1,2}-\d{1,2}$/.test(key) || !v || typeof v !== 'object') continue;
+    clean[key] = {
+      status: VALID_STATUS.includes(v.status) ? v.status : 'normal',
+      checkIn: /^\d{1,2}:\d{2}$/.test(v.checkIn || '') ? v.checkIn : null,
+      checkOut: /^\d{1,2}:\d{2}$/.test(v.checkOut || '') ? v.checkOut : null,
+      extraMin: Math.max(0, parseInt(v.extraMin, 10) || 0),
+      meetingMin: Math.max(0, parseInt(v.meetingMin, 10) || 0),
+      notes: String(v.notes || '')
+    };
+  }
+  return clean;
+}
+
+function applyImport(text) {
+  try {
+    const clean = parseBackup(text);
+    const n = Object.keys(clean).length, now = Object.keys(dataStore).length;
+    if (!confirm(t('confirmImport', n, now))) return;
+    dataStore = clean;
+    saveData(); renderCalendar();
+    backupMsg(t('msgImported', n));
+  } catch (e) { backupMsg(STRINGS.da[e.message] !== undefined ? t(e.message) : String(e.message), false); }
+}
+
+function importFromText() {
+  const txt = document.getElementById('backupText').value.trim();
+  if (!txt) { backupMsg(t('errEmpty'), false); return; }
+  applyImport(txt);
+}
+
+function importFromFile(input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => applyImport(String(r.result));
+  r.onerror = () => backupMsg(t('errRead'), false);
+  r.readAsText(f);
+  input.value = '';
+}
+
+// Offline-støtte (kun over http/https; ignoreres hvis filen åbnes direkte fra disk)
+if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+}
+
+// Sikker initialisering
+document.addEventListener('DOMContentLoaded', () => {
+  lang = loadLang();
+  applyLanguage();
+});
+</script>
+</body>
+</html>
