@@ -1,5 +1,5 @@
 // Cache-first cu actualizare in fundal: functioneaza offline, iar o versiune noua apare la urmatoarea deschidere.
-const CACHE = 'arbejdstimer-v1';
+const CACHE = 'arbejdstimer-v2';
 const ASSETS = ['./', './index.html', './manifest.webmanifest',
                 './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'];
 
